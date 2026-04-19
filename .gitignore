@@ -1,0 +1,69 @@
+# =============================================================================
+# Environnement / Environment
+# =============================================================================
+
+# Contient les clés VPN, mots de passe et tokens — ne jamais commiter
+# Contains VPN keys, passwords and tokens — never commit
+.env
+
+# =============================================================================
+# Données et configurations générées / Generated data and configs
+# =============================================================================
+
+# Configurations persistantes des services (générées au premier démarrage)
+# Persistent service configurations (generated on first start)
+config/
+
+# Données médias et torrents (volumineuses, non versionnées)
+# Media and torrent data (large files, not versioned)
+data/
+
+# =============================================================================
+# Docker / Docker
+# =============================================================================
+
+# Fichiers de surcharge Compose locaux
+# Local Compose override files
+docker-compose.override.yml
+docker-compose.local.yml
+
+# =============================================================================
+# Système / System
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Linux
+*~
+.nfs*
+
+# =============================================================================
+# Éditeurs / Editors
+# =============================================================================
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# JetBrains (IntelliJ, GoLand, etc.)
+.idea/
+
+# Vim / Neovim
+*.swp
+*.swo
+
+# =============================================================================
+# Logs / Logs
+# =============================================================================
+
+# Logs locaux éventuels
+# Any local log files
+*.log
+logs/

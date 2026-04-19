@@ -1,0 +1,287 @@
+# =============================================================================
+# Accès locaux (ports externes définis dans .env) / Local access (external ports defined in .env)
+# =============================================================================
+# qBittorrent (via Gluetun) : http://IP_DU_SERVEUR:${QBITTORRENT_PORT}
+# Prowlarr                  : http://IP_DU_SERVEUR:${PROWLARR_PORT}
+# Radarr                    : http://IP_DU_SERVEUR:${RADARR_PORT}
+# Sonarr                    : http://IP_DU_SERVEUR:${SONARR_PORT}
+# Lidarr                    : http://IP_DU_SERVEUR:${LIDARR_PORT}
+# Questarr                  : http://IP_DU_SERVEUR:${QUESTARR_PORT}
+# Jellyseerr                : http://IP_DU_SERVEUR:${JELLYSEERR_PORT}
+# Jellyfin                  : http://IP_DU_SERVEUR:${JELLYFIN_PORT}
+# Homarr                    : http://IP_DU_SERVEUR:${HOMARR_PORT}
+# GameVault                 : http://IP_DU_SERVEUR:${GAMEVAULT_PORT}
+# FlareSolverr              : http://IP_DU_SERVEUR:${FLARESOLVERR_PORT}
+
+services:
+
+  # ===========================================================================
+  # Couche VPN et téléchargement / VPN and download layer
+  # ===========================================================================
+
+  gluetun:
+    # Conteneur VPN qui encapsule le trafic réseau de qBittorrent.
+    # VPN container that encapsulates qBittorrent's network traffic.
+    # qBittorrent partage son namespace réseau avec Gluetun via network_mode: service:gluetun.
+    # qBittorrent shares its network namespace with Gluetun via network_mode: service:gluetun.
+    image: qmcgaw/gluetun:${GLUETUN_VERSION}
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN # Requis pour créer l'interface TUN / Required to create the TUN interface
+    devices:
+      - /dev/net/tun:/dev/net/tun # Interface TUN nécessaire à WireGuard/OpenVPN / TUN interface required by WireGuard/OpenVPN
+    environment:
+      - VPN_SERVICE_PROVIDER=${VPN_PROVIDER}
+      - VPN_TYPE=${VPN_TYPE}
+      - WIREGUARD_PRIVATE_KEY=${VPN_KEY}
+      - SERVER_COUNTRIES=${VPN_COUNTRY}
+      - FIREWALL_PORT_FORWARD=on # Autorise le port forwarding à travers le pare-feu VPN / Allows port forwarding through the VPN firewall
+    ports:
+      - "${QBITTORRENT_PORT}:8080" # WebUI qBittorrent exposée via Gluetun / qBittorrent WebUI exposed through Gluetun
+    restart: unless-stopped
+
+  qbittorrent:
+    # Client de téléchargement torrent isolé derrière le VPN Gluetun.
+    # Torrent download client isolated behind the Gluetun VPN.
+    # Accessible depuis les autres conteneurs via gluetun:8080 (hostname réseau partagé).
+    # Accessible from other containers via gluetun:8080 (shared network namespace).
+    image: lscr.io/linuxserver/qbittorrent:${QBITTORRENT_VERSION}
+    container_name: qbittorrent
+    network_mode: "service:gluetun" # Tout le trafic transite par Gluetun / All traffic routes through Gluetun
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - WEBUI_PORT=8080
+    volumes:
+      - ${CONFIG_DIR}/qbittorrent:/config
+      - ${DATA_DIR}/torrents:/data/torrents # Dossier de téléchargement actif / Active download directory
+    depends_on:
+      - gluetun # Démarre uniquement si Gluetun est actif / Starts only if Gluetun is running
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Indexation torrent / Torrent indexing
+  # ===========================================================================
+
+  prowlarr:
+    # Gestionnaire centralisé d'indexers pour Radarr, Sonarr et Lidarr.
+    # Centralized indexer manager for Radarr, Sonarr and Lidarr.
+    # Synchronise automatiquement les indexers configurés vers toutes les apps *Arr.
+    # Automatically syncs configured indexers to all *Arr apps.
+    image: lscr.io/linuxserver/prowlarr:${PROWLARR_VERSION}
+    container_name: prowlarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    ports:
+      - "${PROWLARR_PORT}:9696"
+    volumes:
+      - ${CONFIG_DIR}/prowlarr:/config
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Automatisation médias / Media automation
+  # ===========================================================================
+
+  radarr:
+    # Gestion et téléchargement automatique des films.
+    # Automatic management and download of movies.
+    # Monte /data en entier pour permettre les hardlinks entre torrents/ et media/.
+    # Mounts /data in full to enable hardlinks between torrents/ and media/.
+    image: lscr.io/linuxserver/radarr:${RADARR_VERSION}
+    container_name: radarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    ports:
+      - "${RADARR_PORT}:7878"
+    volumes:
+      - ${CONFIG_DIR}/radarr:/config
+      - ${DATA_DIR}:/data # Accès complet à torrents/ et media/ pour les hardlinks / Full access to torrents/ and media/ for hardlinks
+    restart: unless-stopped
+
+  sonarr:
+    # Gestion et téléchargement automatique des séries télévisées.
+    # Automatic management and download of TV series.
+    # Monte /data en entier pour permettre les hardlinks entre torrents/ et media/.
+    # Mounts /data in full to enable hardlinks between torrents/ and media/.
+    image: lscr.io/linuxserver/sonarr:${SONARR_VERSION}
+    container_name: sonarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    ports:
+      - "${SONARR_PORT}:8989"
+    volumes:
+      - ${CONFIG_DIR}/sonarr:/config
+      - ${DATA_DIR}:/data # Accès complet à torrents/ et media/ pour les hardlinks / Full access to torrents/ and media/ for hardlinks
+    restart: unless-stopped
+
+  lidarr:
+    # Gestion et téléchargement automatique de la musique.
+    # Automatic management and download of music.
+    # Utiliser une catégorie qBittorrent dédiée (ex: music) pour éviter les conflits avec Radarr/Sonarr.
+    # Use a dedicated qBittorrent category (e.g. music) to avoid conflicts with Radarr/Sonarr.
+    image: lscr.io/linuxserver/lidarr:${LIDARR_VERSION}
+    container_name: lidarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    ports:
+      - "${LIDARR_PORT}:8686"
+    volumes:
+      - ${CONFIG_DIR}/lidarr:/config
+      - ${DATA_DIR}:/data # Accès complet à torrents/ et media/ pour les hardlinks / Full access to torrents/ and media/ for hardlinks
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Automatisation jeux vidéo / Video game automation
+  # ===========================================================================
+
+  questarr:
+    # Gestion et téléchargement automatique de jeux vidéo via qBittorrent.
+    # Automatic management and download of video games via qBittorrent.
+    # Configurer le client de téléchargement sur gluetun:8080 avec la catégorie "games".
+    # Configure the download client to gluetun:8080 with the category "games".
+    image: ghcr.io/doezer/questarr:latest
+    container_name: questarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - SQLITE_DB_PATH=/app/data/sqlite.db # Base SQLite persistante / Persistent SQLite database
+    ports:
+      - "${QUESTARR_PORT}:5000"
+    volumes:
+      - ${CONFIG_DIR}/questarr:/app/data # Persistance de la base SQLite / SQLite database persistence
+      - ${DATA_DIR}:/data
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Bibliothèque jeux vidéo / Video game library
+  # ===========================================================================
+
+  gamevault-db:
+    # Base de données PostgreSQL dédiée à GameVault.
+    # PostgreSQL database dedicated to GameVault.
+    # Le mot de passe doit être défini avant le premier démarrage (GAMEVAULT_DB_PASSWORD dans .env).
+    # The password must be set before the first start (GAMEVAULT_DB_PASSWORD in .env).
+    image: postgres:15
+    container_name: gamevault-db
+    environment:
+      - POSTGRES_USER=gamevault
+      - POSTGRES_PASSWORD=${GAMEVAULT_DB_PASSWORD}
+      - POSTGRES_DB=gamevault
+    volumes:
+      - ${CONFIG_DIR}/gamevault-db:/var/lib/postgresql/data # Persistance de la base de données / Database persistence
+    restart: unless-stopped
+
+  gamevault:
+    # Serveur de bibliothèque de jeux vidéo — lit les fichiers depuis /games.
+    # Video game library server — reads game files from /games.
+    # Dépend de gamevault-db ; attendre que la base soit prête avant de se connecter.
+    # Depends on gamevault-db ; wait for the database to be ready before connecting.
+    image: phalcode/gamevault-backend:${GAMEVAULT_VERSION}
+    container_name: gamevault
+    environment:
+      - TZ=${TZ}
+      - DB_HOST=gamevault-db # Hostname interne du service PostgreSQL / Internal hostname of the PostgreSQL service
+      - DB_USERNAME=gamevault
+      - DB_PASSWORD=${GAMEVAULT_DB_PASSWORD}
+    ports:
+      - "${GAMEVAULT_PORT}:8080"
+    volumes:
+      - ${CONFIG_DIR}/gamevault/media:/media # Requis par les versions récentes de GameVault / Required by recent GameVault versions
+      - ${DATA_DIR}/media/jeux:/games # Répertoire de la bibliothèque de jeux / Game library directory
+    depends_on:
+      - gamevault-db
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Portail de demandes / Media request portal
+  # ===========================================================================
+
+  jellyseerr:
+    # Interface de demandes de médias connectée à Jellyfin, Radarr et Sonarr.
+    # Media request interface connected to Jellyfin, Radarr and Sonarr.
+    # Ne pilote pas Lidarr nativement — les demandes de musique se gèrent directement dans Lidarr.
+    # Does not natively control Lidarr — music requests are managed directly in Lidarr.
+    image: ghcr.io/seerr-team/seerr:${JELLYSEERR_VERSION}
+    container_name: jellyseerr
+    user: "${PUID}:${PGID}"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    ports:
+      - "${JELLYSEERR_PORT}:5055"
+    volumes:
+      - ${CONFIG_DIR}/jellyseerr:/app/config
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Serveur multimédia / Media server
+  # ===========================================================================
+
+  jellyfin:
+    # Serveur de streaming multimédia — lit les médias finalisés depuis /data/media.
+    # Multimedia streaming server — reads finalized media from /data/media.
+    # Les notifications d'import/suppression sont envoyées par Radarr, Sonarr et Lidarr via le connecteur Emby/Jellyfin.
+    # Import/deletion notifications are sent by Radarr, Sonarr and Lidarr via the Emby/Jellyfin connector.
+    image: lscr.io/linuxserver/jellyfin:${JELLYFIN_VERSION}
+    container_name: jellyfin
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    ports:
+      - "${JELLYFIN_PORT}:8096"
+    volumes:
+      - ${CONFIG_DIR}/jellyfin:/config
+      - ${DATA_DIR}/media:/data/media # Bibliothèques médias finalisés / Finalized media libraries
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Tableau de bord central / Central dashboard
+  # ===========================================================================
+
+  homarr:
+    # Tableau de bord central donnant accès à tous les services via des widgets.
+    # Central dashboard providing access to all services via widgets.
+    # Configurer les widgets avec l'IP du serveur (accès navigateur) ou les hostnames Docker (accès interne).
+    # Configure widgets with the server IP (browser access) or Docker hostnames (internal access).
+    image: ghcr.io/ajnart/homarr:${HOMARR_VERSION}
+    container_name: homarr
+    environment:
+      - TZ=${TZ}
+    ports:
+      - "${HOMARR_PORT}:7575"
+    volumes:
+      - ${CONFIG_DIR}/homarr/configs:/app/data/configs # Configurations des tableaux de bord / Dashboard configurations
+      - ${CONFIG_DIR}/homarr/icons:/app/public/icons   # Icônes personnalisées / Custom icons
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Résolution Cloudflare / Cloudflare bypass
+  # ===========================================================================
+
+  flaresolverr:
+    # Proxy de contournement Cloudflare utilisé par Prowlarr pour certains indexers protégés.
+    # Cloudflare bypass proxy used by Prowlarr for certain protected indexers.
+    # Configurer dans Prowlarr via Settings > Indexers > FlareSolverr, URL : http://flaresolverr:8191.
+    # Configure in Prowlarr via Settings > Indexers > FlareSolverr, URL : http://flaresolverr:8191.
+    # Assigner le tag "flare" uniquement aux indexers qui en ont besoin pour limiter son usage.
+    # Assign the "flare" tag only to indexers that require it to limit its usage.
+    image: ghcr.io/flaresolverr/flaresolverr:${FLARESOLVERR_VERSION}
+    container_name: flaresolverr
+    environment:
+      - LOG_LEVEL=info
+      - TZ=${TZ}
+    ports:
+      - "${FLARESOLVERR_PORT}:8191"
+    restart: unless-stopped
