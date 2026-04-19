@@ -1,4 +1,4 @@
-# Netflix Stack - Configuration Guide
+# MediaManageur - Configuration Guide
 
 ![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 ![Language](https://img.shields.io/badge/Language-EN-1f883d)

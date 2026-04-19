@@ -1,4 +1,4 @@
-# Netflix Stack
+# MediaManageur
 
 ![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/License-Personal-lightgrey)
