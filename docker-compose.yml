@@ -56,6 +56,7 @@ services:
     volumes:
       - ${CONFIG_DIR}/qbittorrent:/config
       - ${DATA_DIR}/torrents:/data/torrents # Dossier de téléchargement actif / Active download directory
+      - ${DATA_DIR}/media/jeux:/data/media/jeux # Cible jeux pour téléchargements automatiques Questarr / Game target for automatic Questarr downloads
     depends_on:
       - gluetun # Démarre uniquement si Gluetun est actif / Starts only if Gluetun is running
     restart: unless-stopped
@@ -88,8 +89,8 @@ services:
   radarr:
     # Gestion et téléchargement automatique des films.
     # Automatic management and download of movies.
-    # Monte /data en entier pour permettre les hardlinks entre torrents/ et media/.
-    # Mounts /data in full to enable hardlinks between torrents/ and media/.
+    # Monte uniquement torrents + media/films pour limiter l'accès tout en gardant les hardlinks.
+    # Mounts only torrents + media/films to limit access while keeping hardlinks.
     image: lscr.io/linuxserver/radarr:${RADARR_VERSION}
     container_name: radarr
     environment:
@@ -100,14 +101,15 @@ services:
       - "${RADARR_PORT}:7878"
     volumes:
       - ${CONFIG_DIR}/radarr:/config
-      - ${DATA_DIR}:/data # Accès complet à torrents/ et media/ pour les hardlinks / Full access to torrents/ and media/ for hardlinks
+      - ${DATA_DIR}/torrents:/data/torrents # Accès aux téléchargements / Access downloads
+      - ${DATA_DIR}/media/films:/data/media/films # Accès à la bibliothèque films / Access movie library
     restart: unless-stopped
 
   sonarr:
     # Gestion et téléchargement automatique des séries télévisées.
     # Automatic management and download of TV series.
-    # Monte /data en entier pour permettre les hardlinks entre torrents/ et media/.
-    # Mounts /data in full to enable hardlinks between torrents/ and media/.
+    # Monte uniquement torrents + media/series pour limiter l'accès tout en gardant les hardlinks.
+    # Mounts only torrents + media/series to limit access while keeping hardlinks.
     image: lscr.io/linuxserver/sonarr:${SONARR_VERSION}
     container_name: sonarr
     environment:
@@ -118,7 +120,8 @@ services:
       - "${SONARR_PORT}:8989"
     volumes:
       - ${CONFIG_DIR}/sonarr:/config
-      - ${DATA_DIR}:/data # Accès complet à torrents/ et media/ pour les hardlinks / Full access to torrents/ and media/ for hardlinks
+      - ${DATA_DIR}/torrents:/data/torrents # Accès aux téléchargements / Access downloads
+      - ${DATA_DIR}/media/series:/data/media/series # Accès à la bibliothèque séries / Access series library
     restart: unless-stopped
 
   lidarr:
@@ -126,6 +129,8 @@ services:
     # Automatic management and download of music.
     # Utiliser une catégorie qBittorrent dédiée (ex: music) pour éviter les conflits avec Radarr/Sonarr.
     # Use a dedicated qBittorrent category (e.g. music) to avoid conflicts with Radarr/Sonarr.
+    # Monte uniquement torrents + media/musique pour limiter l'accès tout en gardant les hardlinks.
+    # Mounts only torrents + media/musique to limit access while keeping hardlinks.
     image: lscr.io/linuxserver/lidarr:${LIDARR_VERSION}
     container_name: lidarr
     environment:
@@ -136,7 +141,8 @@ services:
       - "${LIDARR_PORT}:8686"
     volumes:
       - ${CONFIG_DIR}/lidarr:/config
-      - ${DATA_DIR}:/data # Accès complet à torrents/ et media/ pour les hardlinks / Full access to torrents/ and media/ for hardlinks
+      - ${DATA_DIR}/torrents:/data/torrents # Accès aux téléchargements / Access downloads
+      - ${DATA_DIR}/media/musique:/data/media/musique # Accès à la bibliothèque musique / Access music library
     restart: unless-stopped
 
   # ===========================================================================
@@ -159,7 +165,8 @@ services:
       - "${QUESTARR_PORT}:5000"
     volumes:
       - ${CONFIG_DIR}/questarr:/app/data # Persistance de la base SQLite / SQLite database persistence
-      - ${DATA_DIR}:/data
+      - ${DATA_DIR}/torrents:/data/torrents # Accès aux téléchargements uniquement / Access downloads only
+      - ${DATA_DIR}/media/jeux:/data/media/jeux # Accès à la bibliothèque jeux uniquement / Access game library only
     restart: unless-stopped
 
   # ===========================================================================
@@ -182,8 +189,8 @@ services:
     restart: unless-stopped
 
   gamevault:
-    # Serveur de bibliothèque de jeux vidéo — lit les fichiers depuis /games.
-    # Video game library server — reads game files from /games.
+    # Serveur de bibliothèque de jeux vidéo — indexe les fichiers depuis /files.
+    # Video game library server — indexes files from /files.
     # Dépend de gamevault-db ; attendre que la base soit prête avant de se connecter.
     # Depends on gamevault-db ; wait for the database to be ready before connecting.
     image: phalcode/gamevault-backend:${GAMEVAULT_VERSION}
@@ -197,7 +204,7 @@ services:
       - "${GAMEVAULT_PORT}:8080"
     volumes:
       - ${CONFIG_DIR}/gamevault/media:/media # Requis par les versions récentes de GameVault / Required by recent GameVault versions
-      - ${DATA_DIR}/media/jeux:/games # Répertoire de la bibliothèque de jeux / Game library directory
+      - ${DATA_DIR}/media/jeux:/files # Répertoire indexé des jeux / Indexed game library directory
     depends_on:
       - gamevault-db
     restart: unless-stopped
