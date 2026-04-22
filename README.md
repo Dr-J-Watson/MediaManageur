@@ -43,9 +43,14 @@ Self-hosted Docker Compose stack for managing, downloading and streaming media a
 ## Quick Start / Démarrage rapide
 
 ```bash
-make env
+make init
 make up
 ```
+
+`make init` / `make init`:
+- creates `.env` from `.env.example` if missing / crée `.env` depuis `.env.example` s'il manque
+- generates `docker-compose.override.yml` if missing / génère `docker-compose.override.yml` s'il manque
+- launches interactive configuration (usage profiles + Jellyfin GPU) / lance la configuration interactive (profils d'usage + GPU Jellyfin)
 
 ---
 
@@ -53,6 +58,10 @@ make up
 
 | Command / Commande | Description |
 |---|---|
+| `make init` | Initialisation complète + menu interactif / Full initialization + interactive menu |
+| `make interactive` | Reconfigurer usages + GPU / Reconfigure usages + GPU |
+| `make configure-services` | Choix par usages (override + .env) / Usage-based selection (override + .env) |
+| `make configure-gpu-jellyfin` | Vérification GPU + bloc Jellyfin / GPU checks + Jellyfin block |
 | `make start` | Démarre les conteneurs existants / Start existing containers |
 | `make down` | Arrête et supprime les conteneurs / Stop and remove containers |
 | `make update` | Met à jour les images / Pull images and apply updates |

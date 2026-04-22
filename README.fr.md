@@ -12,9 +12,11 @@ Ce guide explique :
 ## Démarrage rapide
 
 ```bash
-make env
+make init
 make up
 ```
+
+`make init` crée `.env` (si absent), génère `docker-compose.override.yml` (si absent), puis ouvre la configuration interactive.
 
 Accès principal :
 - Dashboard Homarr : `http://IP_DU_SERVEUR:${HOMARR_PORT}`
@@ -29,13 +31,14 @@ Accès principal :
 1. [Vue d'ensemble des connexions](#section-1)
 2. [URLs et hostnames — tableau de référence](#section-2)
 3. [.env — signification de chaque groupe](#section-3)
-4. [Clés API à récupérer](#section-4)
-5. [Connexions à configurer (ordre recommandé)](#section-5)
-6. [Atomic Moves et Hardlinks](#section-6)
-7. [Vérification rapide après configuration](#section-7)
-8. [Démarrage, Makefile et mises à jour](#section-8)
-9. [Dépannage courant](#section-9)
-10. [Bonnes pratiques de sécurité](#section-10)
+4. [Profil d'usages interactif (recommandé)](#section-4)
+5. [Clés API à récupérer](#section-5)
+6. [Connexions à configurer (ordre recommandé)](#section-6)
+7. [Atomic Moves et Hardlinks](#section-7)
+8. [Vérification rapide après configuration](#section-8)
+9. [Démarrage, Makefile et mises à jour](#section-9)
+10. [Dépannage courant](#section-10)
+11. [Bonnes pratiques de sécurité](#section-11)
 
 ---
 
@@ -81,7 +84,7 @@ ${DATA_DIR}/
     └── jeux/
 ```
 
-> **Important :** `torrents/` et `media/` doivent être sur le même volume pour que les Hardlinks fonctionnent (voir [section 6](#section-6)).
+> **Important :** `torrents/` et `media/` doivent être sur le même volume pour que les Hardlinks fonctionnent (voir [section 7](#section-7)).
 
 ---
 
@@ -193,10 +196,43 @@ Chaque service expose un port sur l'hôte via une variable `*_PORT`. Modifiez ce
 
 Les variables `*_VERSION` contrôlent le tag Docker de chaque service. En production, préfère des versions fixes (`2.4.3`) plutôt que `latest` pour éviter les mises à jour non maîtrisées.
 
+### Comment `.env` est mis à jour par le script interactif
+
+Quand vous lancez `make configure-services` (ou `make interactive`) :
+- les blocs de services liés sont commentés/décommentés dans `docker-compose.override.yml`
+- les variables liées dans `.env` sont commentées/décommentées automatiquement
+- une variable partagée n'est commentée que si tous les services qui l'utilisent sont inactifs
+
+Donc relancer le script ne réinitialise pas entièrement votre `.env` : seules les lignes concernées sont basculées.
+
 ---
 
 <a id="section-4"></a>
-## 4) Clés API à récupérer
+## 4) Profil d'usages interactif (recommandé)
+
+Lancer :
+
+```bash
+make configure-services
+```
+
+Le script propose des usages (pas une liste brute de services) :
+- Téléchargement de films (Radarr)
+- Téléchargement de séries (Sonarr)
+- Téléchargement de musique (Lidarr)
+- Regarder/écouter via Jellyfin
+- Portail de demandes (Jellyseerr)
+- Tableau de bord central (Homarr)
+- Téléchargement de jeux (Questarr + GameVault)
+
+Important :
+- Seul le téléchargement de jeux est marqué `BETA`.
+- Jellyfin, Jellyseerr et Homarr ne sont pas indiqués comme beta dans ce menu.
+
+---
+
+<a id="section-5"></a>
+## 5) Clés API à récupérer
 
 > **Prérequis important :** finalise le wizard de création de compte admin sur chaque application *avant* de chercher la clé API. Certaines apps ne l'affichent qu'une fois le setup initial terminé.
 
@@ -219,8 +255,8 @@ Dashboard → Advanced → API Keys → **Create new key**
 
 ---
 
-<a id="section-5"></a>
-## 5) Connexions à configurer (ordre recommandé)
+<a id="section-6"></a>
+## 6) Connexions à configurer (ordre recommandé)
 
 ### Étape A — Vérifier le client de téléchargement (qBittorrent)
 
@@ -334,7 +370,7 @@ Résultat : à chaque ajout, mise à jour ou suppression de média, Jellyfin est
 ### Étape H — GameVault
 
 - Vérifiez la connexion à PostgreSQL (service `gamevault-db`)
-- Vérifiez que le dossier de bibliothèque monté est bien `/games` (depuis `${DATA_DIR}/media/jeux`)
+- Vérifiez que le dossier de bibliothèque monté est bien `/files` (depuis `${DATA_DIR}/media/jeux`)
 - Lancez un scan/rafraîchissement de la bibliothèque après les premiers imports Questarr
 
 > **Note PostgreSQL :** GameVault gère la migration de schéma automatiquement au premier démarrage. Si la base existe déjà d'une version précédente, vérifiez les logs du conteneur pour t'assurer que la migration s'est bien déroulée (`make logs SERVICE=gamevault`).
@@ -348,8 +384,8 @@ Dans Homarr :
 
 ---
 
-<a id="section-6"></a>
-## 6) Atomic Moves et Hardlinks
+<a id="section-7"></a>
+## 7) Atomic Moves et Hardlinks
 
 Les Hardlinks permettent à Radarr/Sonarr/Lidarr de "déplacer" un fichier depuis le dossier torrent vers le dossier média **sans copie physique des données**. Le fichier n'occupe qu'une seule fois l'espace disque, tout en étant accessible depuis deux chemins différents.
 
@@ -374,8 +410,8 @@ df /chemin/torrents /chemin/media
 
 ---
 
-<a id="section-7"></a>
-## 7) Vérification rapide après configuration
+<a id="section-8"></a>
+## 8) Vérification rapide après configuration
 
 | Service | Ce qu'il faut vérifier |
 |---|---|
@@ -383,7 +419,7 @@ df /chemin/torrents /chemin/media
 | Radarr / Sonarr / Lidarr | Le client qBittorrent est vert dans Settings → Download Clients |
 | Questarr | Le client qBittorrent est fonctionnel |
 | Jellyseerr | Les connexions Jellyfin et *Arr sont vertes |
-| GameVault | La base PostgreSQL est connectée, la bibliothèque `/games` est lisible |
+| GameVault | La base PostgreSQL est connectée, la bibliothèque `/files` est lisible |
 | Gluetun | Le VPN est actif (`make logs SERVICE=gluetun` → cherche "connected") |
 
 **Test de bout en bout :**
@@ -395,8 +431,22 @@ df /chemin/torrents /chemin/media
 
 ---
 
-<a id="section-8"></a>
-## 8) Démarrage, Makefile et mises à jour
+<a id="section-9"></a>
+## 9) Démarrage, Makefile et mises à jour
+
+Initialisation complète et configuration interactive :
+
+```bash
+make init
+```
+
+Pour relancer ensuite uniquement la configuration interactive :
+
+```bash
+make interactive
+make configure-services
+make configure-gpu-jellyfin
+```
 
 ### Commandes principales
 
@@ -422,8 +472,8 @@ docker compose up -d jellyseerr
 
 ---
 
-<a id="section-9"></a>
-## 9) Dépannage courant
+<a id="section-10"></a>
+## 10) Dépannage courant
 
 ### Erreur de permissions (`EACCES`, `Permission denied`)
 
@@ -466,8 +516,8 @@ Certaines apps (Prowlarr, Radarr, Sonarr, Lidarr) n'affichent la clé API qu'une
 
 ---
 
-<a id="section-10"></a>
-## 10) Bonnes pratiques de sécurité
+<a id="section-11"></a>
+## 11) Bonnes pratiques de sécurité
 
 - Ne jamais commiter `.env` avec de vraies clés (ajoutez `.env` à `.gitignore`)
 - Changer les mots de passe admin par défaut sur tous les services dès le premier démarrage

@@ -1,83 +1,167 @@
+# =============================================================================
+# Makefile — Stack Docker Compose
+# =============================================================================
+# Premier démarrage après git clone :
+#   make init
+#
+# Utilisation courante :
+#   make up                     Lance la stack
+#   make logs SERVICE=jellyfin  Logs d'un service
+#   make shell SERVICE=jellyfin Shell dans un conteneur
+#   make help                   Liste toutes les cibles
+# =============================================================================
+
 COMPOSE ?= docker compose
 SERVICE ?=
 
-.PHONY: help env ensure-env up down start stop restart pull ps logs config validate update clean
+# Couleurs (désactivées si pas de TTY)
+ifeq ($(shell tput colors 2>/dev/null | grep -q '^[0-9]' && echo yes),yes)
+  BOLD  := $(shell tput bold)
+  RESET := $(shell tput sgr0)
+  GREEN := $(shell tput setaf 2)
+  CYAN  := $(shell tput setaf 6)
+else
+  BOLD  :=
+  RESET :=
+  GREEN :=
+  CYAN  :=
+endif
 
+.DEFAULT_GOAL := help
+
+.PHONY: help init env ensure-env ensure-docker ensure-override \
+        up down start stop restart \
+        pull update clean \
+        ps status logs shell \
+        config validate \
+        interactive configure-services configure-gpu-jellyfin
+
+# -----------------------------------------------------------------------------
+# Aide auto-générée depuis les commentaires ##
+# -----------------------------------------------------------------------------
 help:
-	@echo "Targets disponibles:"
-	@echo "  make env       - Cree .env depuis .env.example si absent"
-	@echo "  make up        - Lance la stack en arriere-plan"
-	@echo "  make down      - Arrete et supprime les conteneurs"
-	@echo "  make start     - Demarre les conteneurs (ou fait up si non initialises)"
-	@echo "  make stop      - Arrete les conteneurs"
-	@echo "  make restart   - Redemarre la stack"
-	@echo "  make pull      - Recupere les dernieres images"
-	@echo "  make ps        - Affiche l'etat des services"
-	@echo "  make logs      - Affiche les logs (SERVICE=<nom> optionnel)"
-	@echo "  make config    - Affiche la config Docker Compose resolue"
-	@echo "  make validate  - Verifie que la config Compose est valide"
-	@echo "  make update    - Pull + recreation des conteneurs"
-	@echo "  make clean     - down + suppression des volumes orphelins"
+	@printf "\n$(BOLD)Stack Docker Compose$(RESET)\n\n"
+	@printf "$(CYAN)Démarrage$(RESET)\n"
+	@grep -E '^(init|env)[^:]*:.*?## .*$$' $(MAKEFILE_LIST) \
+		| awk 'BEGIN {FS=":.*?## "}; {printf "  $(GREEN)%-28s$(RESET) %s\n", $$1, $$2}'
+	@printf "\n$(CYAN)Cycle de vie$(RESET)\n"
+	@grep -E '^(up|down|start|stop|restart|pull|update|clean)[^:]*:.*?## .*$$' $(MAKEFILE_LIST) \
+		| awk 'BEGIN {FS=":.*?## "}; {printf "  $(GREEN)%-28s$(RESET) %s\n", $$1, $$2}'
+	@printf "\n$(CYAN)Observation$(RESET)\n"
+	@grep -E '^(ps|status|logs|shell)[^:]*:.*?## .*$$' $(MAKEFILE_LIST) \
+		| awk 'BEGIN {FS=":.*?## "}; {printf "  $(GREEN)%-28s$(RESET) %s\n", $$1, $$2}'
+	@printf "\n$(CYAN)Validation$(RESET)\n"
+	@grep -E '^(config|validate)[^:]*:.*?## .*$$' $(MAKEFILE_LIST) \
+		| awk 'BEGIN {FS=":.*?## "}; {printf "  $(GREEN)%-28s$(RESET) %s\n", $$1, $$2}'
+	@printf "\n$(CYAN)Configuration$(RESET)\n"
+	@grep -E '^(interactive|configure)[^:]*:.*?## .*$$' $(MAKEFILE_LIST) \
+		| awk 'BEGIN {FS=":.*?## "}; {printf "  $(GREEN)%-28s$(RESET) %s\n", $$1, $$2}'
+	@printf "\nVariables : SERVICE=<nom>   ex: make logs SERVICE=jellyfin\n\n"
 
-env:
+# -----------------------------------------------------------------------------
+# Prérequis
+# -----------------------------------------------------------------------------
+ensure-docker:
+	@command -v docker >/dev/null 2>&1 \
+		|| { echo "Erreur: docker non trouvé dans PATH."; exit 1; }
+
+env: ## Crée .env depuis .env.example si absent
 	@if [ -f .env ]; then \
-		echo ".env existe deja."; \
+		echo ".env existe déjà."; \
 	elif [ -f .env.example ]; then \
 		cp .env.example .env; \
-		echo ".env cree depuis .env.example."; \
+		echo ".env créé depuis .env.example."; \
 	else \
-		echo "Erreur: .env.example introuvable."; \
-		exit 1; \
+		echo "Erreur: .env.example introuvable."; exit 1; \
 	fi
 
 ensure-env:
-	@if [ ! -f .env ]; then \
-		$(MAKE) env; \
-	fi
+	@[ -f .env ] || $(MAKE) --no-print-directory env
 
-up: ensure-env
+ensure-override:
+	@[ -f docker-compose.override.yml ] || $(MAKE) --no-print-directory init
+
+# -----------------------------------------------------------------------------
+# Premier démarrage
+# -----------------------------------------------------------------------------
+init: ensure-docker env ## Premier démarrage : génère l'override et configure la stack
+	./scripts/stack-interactive.sh init
+
+# -----------------------------------------------------------------------------
+# Cycle de vie
+# -----------------------------------------------------------------------------
+up: ensure-docker ensure-env ensure-override ## Lance la stack en arrière-plan
 	$(COMPOSE) up -d --no-recreate
 
-down:
+down: ensure-docker ## Arrête et supprime les conteneurs
 	$(COMPOSE) down
 
-start: ensure-env
-	@if [ -n "$$($(COMPOSE) ps -a --services 2>/dev/null)" ]; then \
+start: ensure-docker ensure-env ensure-override ## Démarre les conteneurs existants (ou up si absents)
+	@if [ -n "$$($(COMPOSE) ps -q 2>/dev/null)" ]; then \
 		$(COMPOSE) start; \
 	else \
-		echo "Aucun conteneur trouve pour ce projet: execution de '$(COMPOSE) up -d'."; \
+		echo "Aucun conteneur actif — exécution de 'up'."; \
 		$(COMPOSE) up -d; \
 	fi
 
-stop:
+stop: ensure-docker ## Arrête les conteneurs sans les supprimer
 	$(COMPOSE) stop
 
-restart: ensure-env
+restart: ensure-docker ensure-env ## Redémarre la stack
 	$(COMPOSE) restart
 
-pull: ensure-env
+pull: ensure-docker ensure-env ensure-override ## Récupère les dernières images
 	$(COMPOSE) pull
 
-ps:
+update: ensure-docker ensure-env ensure-override ## Pull + recrée les conteneurs (force-recreate)
+	$(COMPOSE) pull
+	$(COMPOSE) up -d --force-recreate
+
+clean: ensure-docker ## down + suppression des volumes et orphelins
+	$(COMPOSE) down --volumes --remove-orphans
+
+# -----------------------------------------------------------------------------
+# Observation
+# -----------------------------------------------------------------------------
+ps: ensure-docker ## État des services
 	$(COMPOSE) ps
 
-logs:
+status: ensure-docker ## État détaillé — services unhealthy mis en évidence
+	@$(COMPOSE) ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" \
+		| awk 'NR==1 { print; next } \
+		       /unhealthy|Exit|Error/ { print "\033[31m" $$0 "\033[0m"; next } \
+		       { print }'
+
+logs: ensure-docker ## Logs en continu (SERVICE=<nom> optionnel)
 	@if [ -n "$(SERVICE)" ]; then \
-		$(COMPOSE) logs -f $(SERVICE); \
+		$(COMPOSE) logs -f "$(SERVICE)"; \
 	else \
 		$(COMPOSE) logs -f; \
 	fi
 
-config: ensure-env
+shell: ensure-docker ## Shell dans un conteneur (SERVICE=<nom> requis)
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "Usage: make shell SERVICE=<nom_du_service>"; exit 1; \
+	fi
+	$(COMPOSE) exec "$(SERVICE)" sh -c 'command -v bash >/dev/null 2>&1 && exec bash || exec sh'
+
+# -----------------------------------------------------------------------------
+# Validation
+# -----------------------------------------------------------------------------
+config: ensure-docker ensure-env ensure-override ## Affiche la configuration Compose résolue
 	$(COMPOSE) config
 
-validate: ensure-env
-	$(COMPOSE) config -q
-	@echo "Configuration Compose valide."
+validate: ensure-docker ensure-env ensure-override ## Vérifie que la configuration Compose est valide
+	@$(COMPOSE) config -q && echo "✓ Configuration Compose valide."
 
-update: ensure-env
-	$(COMPOSE) pull
-	$(COMPOSE) up -d
+# -----------------------------------------------------------------------------
+# Configuration interactive
+# -----------------------------------------------------------------------------
+interactive: ## Menu interactif complet (services + GPU Jellyfin)
+	./scripts/stack-interactive.sh
 
-clean:
-	$(COMPOSE) down --volumes --remove-orphans
+configure-services: ## Choix interactif des services dans l'override
+	./scripts/stack-interactive.sh services
+
+configure-gpu-jellyfin: ## Détection GPU + configuration Jellyfin
+	./scripts/stack-interactive.sh gpu

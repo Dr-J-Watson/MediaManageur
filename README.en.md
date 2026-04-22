@@ -12,9 +12,11 @@ This guide explains:
 ## Quick Start
 
 ```bash
-make env
+make init
 make up
 ```
+
+`make init` creates `.env` (if missing), generates `docker-compose.override.yml` (if missing), then opens the interactive configurator.
 
 Main access points:
 - Homarr Dashboard: `http://IP_DU_SERVEUR:${HOMARR_PORT}`
@@ -29,13 +31,14 @@ Main access points:
 1. [Connection overview](#section-1)
 2. [URLs and hostnames - reference table](#section-2)
 3. [.env - variable groups explained](#section-3)
-4. [API keys to retrieve](#section-4)
-5. [App-to-app setup (recommended order)](#section-5)
-6. [Atomic Moves and Hardlinks](#section-6)
-7. [Quick validation checklist](#section-7)
-8. [Start, Makefile, and updates](#section-8)
-9. [Common troubleshooting](#section-9)
-10. [Security best practices](#section-10)
+4. [Interactive usage profile (recommended)](#section-4)
+5. [API keys to retrieve](#section-5)
+6. [App-to-app setup (recommended order)](#section-6)
+7. [Atomic Moves and Hardlinks](#section-7)
+8. [Quick validation checklist](#section-8)
+9. [Start, Makefile, and updates](#section-9)
+10. [Common troubleshooting](#section-10)
+11. [Security best practices](#section-11)
 
 ---
 
@@ -81,7 +84,7 @@ ${DATA_DIR}/
     └── jeux/
 ```
 
-> **Important:** `torrents/` and `media/` must be on the same volume for hardlinks to work (see [section 6](#section-6)).
+> **Important:** `torrents/` and `media/` must be on the same volume for hardlinks to work (see [section 7](#section-7)).
 
 ---
 
@@ -193,10 +196,43 @@ Each service exposes a host port via a `*_PORT` variable. Change these only if a
 
 `*_VERSION` variables control Docker image tags for each service. In production, prefer pinned versions (`2.4.3`) over `latest` to avoid uncontrolled updates.
 
+### How `.env` is updated by the interactive script
+
+When you run `make configure-services` (or `make interactive`):
+- related service blocks are commented/uncommented in `docker-compose.override.yml`
+- related variables in `.env` are commented/uncommented automatically
+- a shared variable is commented only if all linked services are disabled
+
+This means rerunning the script does not reset your whole `.env`; it only toggles relevant lines.
+
 ---
 
 <a id="section-4"></a>
-## 4) API keys to retrieve
+## 4) Interactive usage profile (recommended)
+
+Run:
+
+```bash
+make configure-services
+```
+
+The script asks high-level usages instead of raw services:
+- Movie downloads (Radarr)
+- Series downloads (Sonarr)
+- Music downloads (Lidarr)
+- Watch/listen via Jellyfin
+- Request portal (Jellyseerr)
+- Central dashboard (Homarr)
+- Game downloads (Questarr + GameVault)
+
+Important:
+- Only game downloads are marked as `BETA`.
+- Jellyfin, Jellyseerr and Homarr are not marked as beta by this menu.
+
+---
+
+<a id="section-5"></a>
+## 5) API keys to retrieve
 
 > **Important prerequisite:** complete the initial admin setup wizard in each application *before* looking for API keys. Some apps only expose API keys after setup is finished.
 
@@ -219,8 +255,8 @@ Dashboard -> Advanced -> API Keys -> **Create new key**
 
 ---
 
-<a id="section-5"></a>
-## 5) App-to-app setup (recommended order)
+<a id="section-6"></a>
+## 6) App-to-app setup (recommended order)
 
 ### Step A - Verify download client (qBittorrent)
 
@@ -334,7 +370,7 @@ Result: Jellyfin is notified and refreshes immediately after add/update/delete a
 ### Step H - GameVault
 
 - Verify PostgreSQL connectivity (service `gamevault-db`)
-- Verify game library mount is `/games` (from `${DATA_DIR}/media/jeux`)
+- Verify game library mount is `/files` (from `${DATA_DIR}/media/jeux`)
 - Trigger a scan/refresh after first Questarr imports
 
 > **PostgreSQL note:** GameVault runs schema migrations automatically on first start. If a previous DB exists, check container logs to ensure migration finished successfully (`make logs SERVICE=gamevault`).
@@ -348,8 +384,8 @@ In Homarr:
 
 ---
 
-<a id="section-6"></a>
-## 6) Atomic Moves and Hardlinks
+<a id="section-7"></a>
+## 7) Atomic Moves and Hardlinks
 
 Hardlinks allow Radarr/Sonarr/Lidarr to "move" files from torrent folders to media folders **without physically copying data**. The file uses disk space once while being available from multiple paths.
 
@@ -374,25 +410,39 @@ DATA_DIR=/mnt/data
 
 ---
 
-<a id="section-7"></a>
-## 7) Quick validation checklist
+<a id="section-8"></a>
+## 8) Quick validation checklist
 
 - In Prowlarr, each App integration is green (Test OK)
 - In Radarr/Sonarr/Lidarr, qBittorrent download client is green
 - In Questarr, qBittorrent download client works
-- In GameVault, DB connection is healthy and `/games` is readable
+- In GameVault, DB connection is healthy and `/files` is readable
 - In Jellyseerr, Jellyfin and Services are green
 - A Jellyseerr test request creates a task in Radarr/Sonarr
 - Downloads appear in qBittorrent
 
 ---
 
-<a id="section-8"></a>
-## 8) Start, Makefile, and updates
+<a id="section-9"></a>
+## 9) Start, Makefile, and updates
 
 The project includes a Makefile for common operations.
 
-Initialize environment:
+Initialize and configure interactively:
+
+```bash
+make init
+```
+
+Or re-run only the interactive setup later:
+
+```bash
+make interactive
+make configure-services
+make configure-gpu-jellyfin
+```
+
+Initialize environment only:
 
 ```bash
 make env
@@ -443,8 +493,8 @@ make validate
 
 ---
 
-<a id="section-9"></a>
-## 9) Common troubleshooting
+<a id="section-10"></a>
+## 10) Common troubleshooting
 
 ### Volume permissions
 If a service fails with `EACCES` or `Permission denied`:
@@ -477,8 +527,8 @@ docker run --rm -v /path/to/config/service:/target alpine sh -c 'chown -R 1000:1
 
 ---
 
-<a id="section-10"></a>
-## 10) Security best practices
+<a id="section-11"></a>
+## 11) Security best practices
 
 - Never commit `.env` with real secrets
 - Change default admin passwords
