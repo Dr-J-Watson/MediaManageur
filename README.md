@@ -2,15 +2,15 @@
 
 ![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/License-Personal-lightgrey)
-![Platforms](https://img.shields.io/badge/Services-Media%20%2B%20Games-6f42c1)
+![Platforms](https://img.shields.io/badge/Services-Media-6f42c1)
 ![Stars](https://img.shields.io/github/stars/Dr-J-Watson/MediaManageur?style=social)
 ![Forks](https://img.shields.io/github/forks/Dr-J-Watson/MediaManageur?style=social)
 ![Last commit](https://img.shields.io/github/last-commit/Dr-J-Watson/MediaManageur?color=green&label=Last+update)
 ![Repo size](https://img.shields.io/github/repo-size/Dr-J-Watson/MediaManageur)
 ![Views](https://vbr.nathanchung.dev/badge?page_id=Dr-J-Watson.MediaManageur)
 
-Stack Docker Compose auto-hébergée pour la gestion, le téléchargement et la diffusion de médias et de jeux vidéo.
-Self-hosted Docker Compose stack for managing, downloading and streaming media and video games.
+Stack Docker Compose auto-hébergée pour la gestion, le téléchargement et la diffusion de médias.
+Self-hosted Docker Compose stack for managing, downloading and streaming media.
 
 ---
 
@@ -34,8 +34,6 @@ Self-hosted Docker Compose stack for managing, downloading and streaming media a
 | [qBittorrent](https://www.qbittorrent.org) | Client de téléchargement / Download client |
 | [Gluetun](https://github.com/qdm12/gluetun) | Tunnel VPN pour qBittorrent / VPN tunnel for qBittorrent |
 | [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) | Bypass Cloudflare pour Prowlarr / Cloudflare bypass for Prowlarr |
-| [Questarr](https://github.com/doezer/questarr) | Automatisation des jeux vidéo / Video game automation |
-| [GameVault](https://gamevau.lt) | Bibliothèque de jeux vidéo / Video game library |
 | [Homarr](https://homarr.dev) | Tableau de bord central / Central dashboard |
 
 ---

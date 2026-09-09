@@ -30,11 +30,9 @@
 #   Radarr                    : http://IP_DU_SERVEUR:${RADARR_PORT}
 #   Sonarr                    : http://IP_DU_SERVEUR:${SONARR_PORT}
 #   Lidarr                    : http://IP_DU_SERVEUR:${LIDARR_PORT}
-#   Questarr                  : http://IP_DU_SERVEUR:${QUESTARR_PORT}
 #   Jellyseerr                : http://IP_DU_SERVEUR:${JELLYSEERR_PORT}
 #   Jellyfin                  : http://IP_DU_SERVEUR:${JELLYFIN_PORT}
 #   Homarr                    : http://IP_DU_SERVEUR:${HOMARR_PORT}
-#   GameVault                 : http://IP_DU_SERVEUR:${GAMEVAULT_PORT}
 #   FlareSolverr              : http://IP_DU_SERVEUR:${FLARESOLVERR_PORT}
 # =============================================================================
 
@@ -46,9 +44,6 @@ services:
   # ===========================================================================
 
   gluetun:
-    # Conteneur VPN — encapsule le trafic réseau de qBittorrent. / VPN container — encapsulates qBittorrent's network traffic.
-    # qBittorrent partage le namespace réseau de Gluetun via network_mode. / qBittorrent shares Gluetun's network namespace via network_mode.
-    # Nécessite VPN_PROVIDER, VPN_TYPE, VPN_KEY, VPN_COUNTRY dans .env. / Requires VPN_PROVIDER, VPN_TYPE, VPN_KEY, VPN_COUNTRY in .env.
     image: qmcgaw/gluetun:${GLUETUN_VERSION}
     container_name: gluetun
     cap_add:
@@ -60,14 +55,21 @@ services:
       - VPN_TYPE=${VPN_TYPE}
       - WIREGUARD_PRIVATE_KEY=${VPN_KEY}
       - SERVER_COUNTRIES=${VPN_COUNTRY}
-      - FIREWALL_PORT_FORWARD=on
+      - VPN_PORT_FORWARDING=on
+      # L'API locale pour que le mod qBittorrent puisse récupérer le port dynamique
+      - HTTP_CONTROL_SERVER_ADDRESS=:8000
+      - HTTP_CONTROL_SERVER_USER=${GLUETUN_CONTROL_USER}
+      - HTTP_CONTROL_SERVER_PASSWORD=${GLUETUN_CONTROL_PASSWORD}
     ports:
-      - "${QBITTORRENT_PORT}:8080"
+      - "${QBITTORRENT_PORT}:8080" # UNIQUEMENT la WebUI, aucun port torrent ici !
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/gluetun-entrypoint", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
   qbittorrent:
-    # Client torrent isolé derrière Gluetun. / Isolated torrent client behind Gluetun.
-    # Accessible depuis les autres conteneurs via gluetun:8080. / Accessible from other containers via gluetun:8080.
     image: lscr.io/linuxserver/qbittorrent:${QBITTORRENT_VERSION}
     container_name: qbittorrent
     network_mode: "service:gluetun"
@@ -76,12 +78,18 @@ services:
       - PGID=${PGID}
       - TZ=${TZ}
       - WEBUI_PORT=8080
+      - DOCKER_MODS=ghcr.io/t-anc/gsp-qbittorent-gluetun-sync-port-mod:latest
+      - GSP_GLUETUN_URL=http://localhost:8000
+      - GSP_QBT_URL=http://localhost:8080
+      - GSP_GLUETUN_AUTH_TYPE=basic
+      - GSP_GLUETUN_AUTH_USER=${GLUETUN_CONTROL_USER}
+      - GSP_GLUETUN_AUTH_PASS=${GLUETUN_CONTROL_PASSWORD}
     volumes:
       - ${CONFIG_DIR}/qbittorrent:/config
-      - ${DATA_DIR}/torrents:/data/torrents
-      - ${DATA_DIR}/media/jeux:/data/media/jeux
+      - ${DATA_DIR}:/data
     depends_on:
-      - gluetun
+      gluetun:
+        condition: service_healthy
     restart: unless-stopped
 
   # ===========================================================================
@@ -120,8 +128,7 @@ services:
       - "${RADARR_PORT}:7878"
     volumes:
       - ${CONFIG_DIR}/radarr:/config
-      - ${DATA_DIR}/torrents:/data/torrents
-      - ${DATA_DIR}/media/films:/data/media/films
+      - ${DATA_DIR}:/data
     restart: unless-stopped
 
   sonarr:
@@ -137,8 +144,7 @@ services:
       - "${SONARR_PORT}:8989"
     volumes:
       - ${CONFIG_DIR}/sonarr:/config
-      - ${DATA_DIR}/torrents:/data/torrents
-      - ${DATA_DIR}/media/series:/data/media/series
+      - ${DATA_DIR}:/data
     restart: unless-stopped
 
   lidarr:
@@ -155,66 +161,7 @@ services:
       - "${LIDARR_PORT}:8686"
     volumes:
       - ${CONFIG_DIR}/lidarr:/config
-      - ${DATA_DIR}/torrents:/data/torrents
-      - ${DATA_DIR}/media/musique:/data/media/musique
-    restart: unless-stopped
-
-  # ===========================================================================
-  # Automatisation jeux vidéo / Video game automation
-  # ===========================================================================
-
-  questarr:
-    # Gestion et téléchargement automatique de jeux via qBittorrent. / Automatic game management and downloading via qBittorrent.
-    # Configurer le client sur gluetun:8080 avec la catégorie "games". / Configure the client on gluetun:8080 with the "games" category. 
-    image: ghcr.io/doezer/questarr:latest
-    container_name: questarr
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-      - SQLITE_DB_PATH=/app/data/sqlite.db
-    ports:
-      - "${QUESTARR_PORT}:5000"
-    volumes:
-      - ${CONFIG_DIR}/questarr:/app/data
-      - ${DATA_DIR}/torrents:/data/torrents
-      - ${DATA_DIR}/media/jeux:/data/media/jeux
-    restart: unless-stopped
-
-  # ===========================================================================
-  # Bibliothèque jeux vidéo / Video game library
-  # ===========================================================================
-
-  gamevault-db:
-    # Base PostgreSQL dédiée à GameVault. / Dedicated PostgreSQL database for GameVault.
-    # Définir GAMEVAULT_DB_PASSWORD dans .env avant le premier démarrage. / Set GAMEVAULT_DB_PASSWORD in .env before first startup.
-    image: postgres:15
-    container_name: gamevault-db
-    environment:
-      - POSTGRES_USER=gamevault
-      - POSTGRES_PASSWORD=${GAMEVAULT_DB_PASSWORD}
-      - POSTGRES_DB=gamevault
-    volumes:
-      - ${CONFIG_DIR}/gamevault-db:/var/lib/postgresql/data
-    restart: unless-stopped
-
-  gamevault:
-    # Serveur de bibliothèque de jeux — indexe les fichiers depuis /files. / Video game library server — indexes files from /files.
-    # Attend que gamevault-db soit prêt avant de se connecter. / Waits for gamevault-db to be ready before connecting.
-    image: phalcode/gamevault-backend:${GAMEVAULT_VERSION}
-    container_name: gamevault
-    environment:
-      - TZ=${TZ}
-      - DB_HOST=gamevault-db
-      - DB_USERNAME=gamevault
-      - DB_PASSWORD=${GAMEVAULT_DB_PASSWORD}
-    ports:
-      - "${GAMEVAULT_PORT}:8080"
-    volumes:
-      - ${CONFIG_DIR}/gamevault/media:/media
-      - ${DATA_DIR}/media/jeux:/files
-    depends_on:
-      - gamevault-db
+      - ${DATA_DIR}:/data # Accès aux téléchargements / Access downloads
     restart: unless-stopped
 
   # ===========================================================================

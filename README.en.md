@@ -2,7 +2,7 @@
 
 ![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 ![Language](https://img.shields.io/badge/Language-EN-1f883d)
-![Services](https://img.shields.io/badge/Services-Media%20%2B%20Games-6f42c1)
+![Services](https://img.shields.io/badge/Services-Media-6f42c1)
 
 This guide explains:
 - connections between applications
@@ -75,13 +75,11 @@ ${DATA_DIR}/
 ├── torrents/
 │   ├── movies/
 │   ├── tv/
-│   ├── music/
-│   └── games/
+│   └── music/
 └── media/
     ├── films/
     ├── series/
-    ├── musique/
-    └── jeux/
+    └── musique/
 ```
 
 > **Important:** `torrents/` and `media/` must be on the same volume for hardlinks to work (see [section 7](#section-7)).
@@ -105,13 +103,10 @@ Radarr ------------------------> qBittorrent (via Gluetun)
 Sonarr ------------------------> qBittorrent (via Gluetun)
 Lidarr ------------------------> qBittorrent (via Gluetun)
 
-Questarr ----------------------> qBittorrent (via Gluetun)
-
 Prowlarr ----------------------> FlareSolverr (Cloudflare indexers only)
 
 qBittorrent -------------------> /data/torrents  (in-progress files)
 Jellyfin <---------------------- /data/media     (finalized media)
-GameVault <--------------------- /data/media/jeux
 
 Radarr/Sonarr/Lidarr ----------> Jellyfin (import/rename/delete notifications)
 
@@ -134,12 +129,9 @@ qBittorrent shares Gluetun's network namespace. From other containers, the reach
 | Radarr | `http://IP:${RADARR_PORT}` | `radarr` | `7878` |
 | Sonarr | `http://IP:${SONARR_PORT}` | `sonarr` | `8989` |
 | Lidarr | `http://IP:${LIDARR_PORT}` | `lidarr` | `8686` |
-| Questarr | `http://IP:${QUESTARR_PORT}` | `questarr` | `5000` |
 | Jellyseerr | `http://IP:${JELLYSEERR_PORT}` | `jellyseerr` | `5055` |
 | Jellyfin | `http://IP:${JELLYFIN_PORT}` | `jellyfin` | `8096` |
 | Homarr | `http://IP:${HOMARR_PORT}` | `homarr` | `7575` |
-| GameVault | `http://IP:${GAMEVAULT_PORT}` | `gamevault` | `8080` |
-| GameVault DB | *(internal only)* | `gamevault-db` | `5432` |
 | FlareSolverr | `http://IP:${FLARESOLVERR_PORT}` | `flaresolverr` | `8191` |
 
 > Always use **Docker hostnames** (column 3) for inter-service connections, never the host IP.
@@ -182,12 +174,6 @@ To get your PUID/PGID: `id $(whoami)`
 
 Check [Gluetun documentation](https://github.com/qdm12/gluetun-wiki) for provider-specific variables.
 
-### GameVault variables
-
-| Variable | Example | Description |
-|---|---|---|
-| `GAMEVAULT_DB_PASSWORD` | `password` | PostgreSQL password used by GameVault |
-
 ### External port variables
 
 Each service exposes a host port via a `*_PORT` variable. Change these only if a conflict exists on your machine.
@@ -223,11 +209,6 @@ The script asks high-level usages instead of raw services:
 - Watch/listen via Jellyfin
 - Request portal (Jellyseerr)
 - Central dashboard (Homarr)
-- Game downloads (Questarr + GameVault)
-
-Important:
-- Only game downloads are marked as `BETA`.
-- Jellyfin, Jellyseerr and Homarr are not marked as beta by this menu.
 
 ---
 
@@ -316,16 +297,7 @@ Recommended categories:
 
 **Test -> Save** in each app.
 
-### Step E - Questarr to qBittorrent
-
-In Questarr:
-- Download client: `gluetun:8080`
-- Dedicated category: `games` (to isolate game downloads)
-- Import paths: `/data/media/jeux`
-
-If you use Prowlarr for game indexers, add Questarr as an app in Prowlarr (depending on your version), using the same logic as Step B.
-
-### Step F - Jellyseerr
+### Step E - Jellyseerr
 
 In Jellyseerr, connect Jellyfin first, then Arr services:
 
@@ -345,7 +317,7 @@ In Jellyseerr, connect Jellyfin first, then Arr services:
 
 > Jellyseerr does not natively manage Lidarr. Music requests are handled directly in Lidarr.
 
-### Step G - Jellyfin libraries
+### Step F - Jellyfin libraries
 
 **Add libraries:**
 
@@ -367,15 +339,7 @@ In **Radarr, Sonarr, and Lidarr -> Settings -> Connect -> + -> Emby/Jellyfin**:
 
 Result: Jellyfin is notified and refreshes immediately after add/update/delete actions.
 
-### Step H - GameVault
-
-- Verify PostgreSQL connectivity (service `gamevault-db`)
-- Verify game library mount is `/files` (from `${DATA_DIR}/media/jeux`)
-- Trigger a scan/refresh after first Questarr imports
-
-> **PostgreSQL note:** GameVault runs schema migrations automatically on first start. If a previous DB exists, check container logs to ensure migration finished successfully (`make logs SERVICE=gamevault`).
-
-### Step I - Homarr
+### Step G - Homarr
 
 In Homarr:
 - Add widgets for each service
@@ -415,8 +379,6 @@ DATA_DIR=/mnt/data
 
 - In Prowlarr, each App integration is green (Test OK)
 - In Radarr/Sonarr/Lidarr, qBittorrent download client is green
-- In Questarr, qBittorrent download client works
-- In GameVault, DB connection is healthy and `/files` is readable
 - In Jellyseerr, Jellyfin and Services are green
 - A Jellyseerr test request creates a task in Radarr/Sonarr
 - Downloads appear in qBittorrent
@@ -501,18 +463,6 @@ If a service fails with `EACCES` or `Permission denied`:
 - verify permissions in mounted folders under `CONFIG_DIR`
 - ensure `PUID` and `PGID` match file ownership
 - grant read/write permissions to that user/group
-
-### GameVault v13 migration (`/images` -> `/media`)
-If GameVault loops with an error saying `/images` is deprecated:
-- mount media volume to `/media` (not `/images`)
-- recreate GameVault so new mount is applied
-
-Example:
-
-```bash
-docker compose up -d --force-recreate gamevault
-docker compose logs -f gamevault
-```
 
 Generic permission fix (adapt path):
 

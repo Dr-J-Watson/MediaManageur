@@ -2,7 +2,7 @@
 
 ![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 ![Langue](https://img.shields.io/badge/Langue-FR-0055A4)
-![Services](https://img.shields.io/badge/Services-Media%20%2B%20Jeux-6f42c1)
+![Services](https://img.shields.io/badge/Services-Media-6f42c1)
 
 Ce guide explique :
 - les connexions entre les applications
@@ -75,13 +75,11 @@ ${DATA_DIR}/
 ├── torrents/
 │   ├── movies/
 │   ├── tv/
-│   ├── music/
-│   └── games/
+│   └── music/
 └── media/
     ├── films/
     ├── series/
-    ├── musique/
-    └── jeux/
+    └── musique/
 ```
 
 > **Important :** `torrents/` et `media/` doivent être sur le même volume pour que les Hardlinks fonctionnent (voir [section 7](#section-7)).
@@ -105,13 +103,10 @@ Radarr ──────────────────────► qBi
 Sonarr ──────────────────────► qBittorrent (via Gluetun)
 Lidarr ──────────────────────► qBittorrent (via Gluetun)
 
-Questarr ────────────────────► qBittorrent (via Gluetun)
-
 Prowlarr ────────────────────► FlareSolverr (indexers Cloudflare uniquement)
 
 qBittorrent ────────────────► /data/torrents  (fichiers en cours)
 Jellyfin ◄──────────────────── /data/media     (médias finalisés)
-GameVault ◄─────────────────── /data/media/jeux
 
 Radarr/Sonarr/Lidarr ───────► Jellyfin (notifications import/rename/delete)
 
@@ -134,12 +129,9 @@ qBittorrent partage le namespace réseau de Gluetun. Du point de vue des autres 
 | Radarr | `http://IP:${RADARR_PORT}` | `radarr` | `7878` |
 | Sonarr | `http://IP:${SONARR_PORT}` | `sonarr` | `8989` |
 | Lidarr | `http://IP:${LIDARR_PORT}` | `lidarr` | `8686` |
-| Questarr | `http://IP:${QUESTARR_PORT}` | `questarr` | `5000` |
 | Jellyseerr | `http://IP:${JELLYSEERR_PORT}` | `jellyseerr` | `5055` |
 | Jellyfin | `http://IP:${JELLYFIN_PORT}` | `jellyfin` | `8096` |
 | Homarr | `http://IP:${HOMARR_PORT}` | `homarr` | `7575` |
-| GameVault | `http://IP:${GAMEVAULT_PORT}` | `gamevault` | `8080` |
-| GameVault DB | *(interne uniquement)* | `gamevault-db` | `5432` |
 | FlareSolverr | `http://IP:${FLARESOLVERR_PORT}` | `flaresolverr` | `8191` |
 
 > Utilisez toujours les **hostnames Docker** (colonne 3) pour configurer les connexions inter-services, jamais l'IP de l'hôte.
@@ -182,12 +174,6 @@ Pour connaître votre PUID/PGID : `id $(whoami)`
 
 Consultez la [documentation Gluetun](https://github.com/qdm12/gluetun-wiki) pour les variables spécifiques à votre fournisseur.
 
-### Variables GameVault
-
-| Variable | Exemple | Description |
-|---|---|---|
-| `GAMEVAULT_DB_PASSWORD` | `motdepasse` | Mot de passe PostgreSQL pour GameVault |
-
 ### Variables de ports externes
 
 Chaque service expose un port sur l'hôte via une variable `*_PORT`. Modifiez ces valeurs uniquement en cas de conflit avec un port déjà utilisé sur votre machine.
@@ -223,11 +209,6 @@ Le script propose des usages (pas une liste brute de services) :
 - Regarder/écouter via Jellyfin
 - Portail de demandes (Jellyseerr)
 - Tableau de bord central (Homarr)
-- Téléchargement de jeux (Questarr + GameVault)
-
-Important :
-- Seul le téléchargement de jeux est marqué `BETA`.
-- Jellyfin, Jellyseerr et Homarr ne sont pas indiqués comme beta dans ce menu.
 
 ---
 
@@ -316,16 +297,7 @@ Catégories recommandées (à définir dans chaque app) :
 
 **Test → Save** pour chaque application.
 
-### Étape E — Questarr vers qBittorrent
-
-Dans Questarr :
-- Client de téléchargement : `gluetun:8080`
-- Catégorie dédiée : `games` (pour isoler les téléchargements jeux)
-- Chemins d'import : `/data/media/jeux`
-
-Si vous utilisez Prowlarr pour les indexers de jeux, ajoutez Questarr comme application dans Prowlarr (selon la version disponible) en suivant la même logique que l'étape B.
-
-### Étape F — Jellyseerr
+### Étape E — Jellyseerr
 
 Dans Jellyseerr, connecte d'abord Jellyfin, puis les services *Arr :
 
@@ -345,7 +317,7 @@ Dans Jellyseerr, connecte d'abord Jellyfin, puis les services *Arr :
 
 > Jellyseerr ne pilote pas Lidarr nativement. Les demandes de musique se gèrent directement dans l'interface Lidarr.
 
-### Étape G — Bibliothèques Jellyfin
+### Étape F — Bibliothèques Jellyfin
 
 **Ajouter les bibliothèques :**
 
@@ -367,15 +339,7 @@ Dans **Radarr, Sonarr et Lidarr → Settings → Connect → + → Emby/Jellyfin
 
 Résultat : à chaque ajout, mise à jour ou suppression de média, Jellyfin est notifié et rafraîchit sa bibliothèque immédiatement.
 
-### Étape H — GameVault
-
-- Vérifiez la connexion à PostgreSQL (service `gamevault-db`)
-- Vérifiez que le dossier de bibliothèque monté est bien `/files` (depuis `${DATA_DIR}/media/jeux`)
-- Lancez un scan/rafraîchissement de la bibliothèque après les premiers imports Questarr
-
-> **Note PostgreSQL :** GameVault gère la migration de schéma automatiquement au premier démarrage. Si la base existe déjà d'une version précédente, vérifiez les logs du conteneur pour t'assurer que la migration s'est bien déroulée (`make logs SERVICE=gamevault`).
-
-### Étape I — Homarr
+### Étape G — Homarr
 
 Dans Homarr :
 - Ajoutez des widgets vers chaque service
@@ -417,9 +381,7 @@ df /chemin/torrents /chemin/media
 |---|---|
 | Prowlarr | Chaque app connectée affiche un indicateur vert dans Settings → Apps |
 | Radarr / Sonarr / Lidarr | Le client qBittorrent est vert dans Settings → Download Clients |
-| Questarr | Le client qBittorrent est fonctionnel |
 | Jellyseerr | Les connexions Jellyfin et *Arr sont vertes |
-| GameVault | La base PostgreSQL est connectée, la bibliothèque `/files` est lisible |
 | Gluetun | Le VPN est actif (`make logs SERVICE=gluetun` → cherche "connected") |
 
 **Test de bout en bout :**

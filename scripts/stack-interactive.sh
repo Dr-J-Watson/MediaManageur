@@ -6,10 +6,11 @@
 #   - .env                         (commenter/décommenter les variables associées)
 #
 # Usage :
-#   ./scripts/stack-interactive.sh            → menu interactif complet
-#   ./scripts/stack-interactive.sh init       → génère l'override si absent, puis menu
-#   ./scripts/stack-interactive.sh services   → choix des usages uniquement
-#   ./scripts/stack-interactive.sh gpu        → configuration GPU uniquement
+#   ./scripts/stack-interactive.sh              → menu interactif complet
+#   ./scripts/stack-interactive.sh init          → génère l'override si absent, puis menu
+#   ./scripts/stack-interactive.sh services      → choix des usages uniquement
+#   ./scripts/stack-interactive.sh gpu           → configuration GPU uniquement
+#   ./scripts/stack-interactive.sh check-update  → vérifie les MàJ d'images des services actifs
 # =============================================================================
 set -euo pipefail
 
@@ -44,6 +45,21 @@ check_env() {
     cp "$ENV_EXAMPLE_FILE" "$ENV_FILE"
     ok "$(basename "$ENV_FILE") créé depuis $(basename "$ENV_EXAMPLE_FILE")."
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Fichiers compose actifs (base + override si présent)
+# ---------------------------------------------------------------------------
+compose_files_args() {
+  local -a args=(-f "$COMPOSE_FILE")
+  [[ -f "$OVERRIDE_FILE" ]] && args+=(-f "$OVERRIDE_FILE")
+  printf '%s\n' "${args[@]}"
+}
+
+compose() {
+  local -a args=()
+  while IFS= read -r line; do args+=("$line"); done < <(compose_files_args)
+  docker compose "${args[@]}" "$@"
 }
 
 # ---------------------------------------------------------------------------
@@ -181,8 +197,6 @@ _init_var_owners() {
   VAR_OWNERS[SONARR_PORT]="sonarr"
   VAR_OWNERS[LIDARR_VERSION]="lidarr"
   VAR_OWNERS[LIDARR_PORT]="lidarr"
-  VAR_OWNERS[QUESTARR_VERSION]="questarr"
-  VAR_OWNERS[QUESTARR_PORT]="questarr"
   VAR_OWNERS[JELLYFIN_VERSION]="jellyfin"
   VAR_OWNERS[JELLYFIN_PORT]="jellyfin"
   VAR_OWNERS[JELLYSEERR_VERSION]="jellyseerr"
@@ -191,10 +205,6 @@ _init_var_owners() {
   VAR_OWNERS[HOMARR_PORT]="homarr"
   VAR_OWNERS[FLARESOLVERR_VERSION]="flaresolverr"
   VAR_OWNERS[FLARESOLVERR_PORT]="flaresolverr"
-  # Variables partagées entre plusieurs services
-  VAR_OWNERS[GAMEVAULT_DB_PASSWORD]="gamevault-db gamevault"
-  VAR_OWNERS[GAMEVAULT_VERSION]="gamevault"
-  VAR_OWNERS[GAMEVAULT_PORT]="gamevault"
 }
 
 # Retourne toutes les variables associées à un service
@@ -261,7 +271,6 @@ _services_for_usage() {
     movies)     echo "gluetun qbittorrent prowlarr radarr" ;;
     series)     echo "gluetun qbittorrent prowlarr sonarr" ;;
     music)      echo "gluetun qbittorrent prowlarr lidarr" ;;
-    games)      echo "gluetun qbittorrent questarr gamevault-db gamevault" ;;
     jellyfin)   echo "jellyfin" ;;
     jellyseerr) echo "jellyseerr" ;;
     homarr)     echo "homarr" ;;
@@ -276,7 +285,6 @@ _usage_default() {
     movies)     probe="radarr" ;;
     series)     probe="sonarr" ;;
     music)      probe="lidarr" ;;
-    games)      probe="questarr" ;;
     jellyfin)   probe="jellyfin" ;;
     jellyseerr) probe="jellyseerr" ;;
     homarr)     probe="homarr" ;;
@@ -293,13 +301,13 @@ declare -A desired   # service → 0|1, calculé par apply_usage_selection
 
 apply_usage_selection() {
   # Réinitialise tous les services connus à 0
-  local all_services="gluetun qbittorrent prowlarr radarr sonarr lidarr questarr gamevault-db gamevault jellyfin jellyseerr homarr flaresolverr"
+  local all_services="gluetun qbittorrent prowlarr radarr sonarr lidarr jellyfin jellyseerr homarr flaresolverr"
   local svc
   for svc in $all_services; do desired["$svc"]=0; done
 
   # Active les services requis par chaque usage sélectionné
   local usage
-  for usage in movies series music games jellyfin jellyseerr homarr; do
+  for usage in movies series music jellyfin jellyseerr homarr; do
     local var="enable_${usage//-/_}"
     if [[ "${!var:-0}" == "1" ]]; then
       for svc in $(_services_for_usage "$usage"); do
@@ -347,7 +355,6 @@ configure_services_interactive() {
     [movies]="Téléchargement de films          (Radarr)"
     [series]="Téléchargement de séries         (Sonarr)"
     [music]="Téléchargement de musique        (Lidarr)"
-    [games]="Téléchargement de jeux  [BETA]   (Questarr + GameVault)"
     [jellyfin]="Lecture via Jellyfin"
     [jellyseerr]="Portail de demandes              (Jellyseerr)"
     [homarr]="Tableau de bord central          (Homarr)"
@@ -366,25 +373,11 @@ configure_services_interactive() {
     fi
   done
 
-  printf "\n"
-  warn "Le téléchargement de jeux est en phase de test (services Questarr + GameVault), à n'activer que si vous êtes prêt à rencontrer des bugs et à contribuer à leur résolution.\n"
-  printf "\n"
-
-  usage="games"
-  default="$(_usage_default "$usage")"
-  label="${labels[$usage]}"
-  local var="enable_${usage//-/_}"
-  if prompt_yes_no "  $label" "$default"; then
-    declare -g "$var=1"
-  else
-    declare -g "$var=0"
-  fi
-
   apply_usage_selection
 
   printf "\n=== Résumé ===\n"
   local state
-  for usage in movies series music games jellyfin jellyseerr homarr; do
+  for usage in movies series music jellyfin jellyseerr homarr; do
     local var="enable_${usage//-/_}"
     state="$([[ "${!var}" == "1" ]] && echo "actif" || echo "inactif")"
     info "${labels[$usage]} : $state"
@@ -586,6 +579,70 @@ configure_gpu_interactive() {
 }
 
 # ---------------------------------------------------------------------------
+# Vérification des mises à jour d'images (services actifs uniquement)
+#
+# Ne modifie ni ne recrée aucun conteneur : télécharge la dernière image de
+# chaque service actif (running) puis compare son ID à celui réellement
+# utilisé par le conteneur en cours d'exécution.
+# ---------------------------------------------------------------------------
+check_update_services() {
+  check_compose
+  require_cmd docker
+
+  local services
+  services="$(compose ps --services --status running 2>/dev/null || true)"
+
+  if [[ -z "$services" ]]; then
+    warn "Aucun conteneur actif — lancez 'make up' d'abord."
+    return 0
+  fi
+
+  printf "\n=== Vérification des mises à jour d'images ===\n"
+  printf "(services actifs, override inclus s'il existe)\n\n"
+  printf "%-20s %s\n" "SERVICE" "STATUT"
+  printf -- "-------------------- --------------------\n"
+
+  local svc image container_id running_image_id latest_image_id
+  local up_to_date=0 updatable=0 errors=0
+  local -a updatable_list=()
+
+  for svc in $services; do
+    image="$(compose config --images "$svc" 2>/dev/null | head -n1)"
+    [[ -z "$image" ]] && continue
+
+    container_id="$(compose ps -q "$svc" 2>/dev/null)"
+    [[ -z "$container_id" ]] && continue
+
+    running_image_id="$(docker inspect --format='{{.Image}}' "$container_id" 2>/dev/null || true)"
+
+    if ! docker pull -q "$image" >/dev/null 2>&1; then
+      printf "%-20s %s\n" "$svc" "erreur pull"
+      errors=$((errors + 1))
+      continue
+    fi
+
+    latest_image_id="$(docker image inspect --format='{{.Id}}' "$image" 2>/dev/null || true)"
+
+    if [[ -n "$running_image_id" && "$running_image_id" == "$latest_image_id" ]]; then
+      printf "%-20s %s\n" "$svc" "✓ à jour"
+      up_to_date=$((up_to_date + 1))
+    else
+      printf "%-20s %s\n" "$svc" "↑ MàJ dispo"
+      updatable=$((updatable + 1))
+      updatable_list+=("$svc")
+    fi
+  done
+
+  printf "\n%d à jour, %d mise(s) à jour disponible(s), %d erreur(s)\n" \
+    "$up_to_date" "$updatable" "$errors"
+
+  if [[ $updatable -gt 0 ]]; then
+    printf "  → services concernés : %s\n" "${updatable_list[*]}"
+    printf "  → lancez 'make update' pour appliquer les mises à jour\n"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Prompt oui / non
 # ---------------------------------------------------------------------------
 prompt_yes_no() {
@@ -618,15 +675,17 @@ main_menu() {
     printf "║  1) Usages actifs (override + .env)  ║\n"
     printf "║  2) GPU Jellyfin                     ║\n"
     printf "║  3) Tout configurer (1 puis 2)       ║\n"
-    printf "║  4) Quitter                          ║\n"
+    printf "║  4) Vérifier les MàJ d'images        ║\n"
+    printf "║  5) Quitter                          ║\n"
     printf "╚══════════════════════════════════════╝\n"
     local choice
-    read -r -p "Votre choix [1-4] : " choice || break
+    read -r -p "Votre choix [1-5] : " choice || break
     case "${choice:-}" in
       1) configure_services_interactive ;;
       2) configure_gpu_interactive ;;
       3) configure_services_interactive; configure_gpu_interactive ;;
-      4) break ;;
+      4) check_update_services ;;
+      5) break ;;
       *) warn "Choix invalide." ;;
     esac
   done
@@ -637,9 +696,10 @@ main_menu() {
 # Point d'entrée
 # ---------------------------------------------------------------------------
 case "${1:-}" in
-  init)     generate_override; main_menu ;;
-  services) configure_services_interactive ;;
-  gpu)      configure_gpu_interactive ;;
-  "")       main_menu ;;
-  *)        die "Usage: $0 [init|services|gpu]" ;;
+  init)          generate_override; main_menu ;;
+  services)      configure_services_interactive ;;
+  gpu)           configure_gpu_interactive ;;
+  check-update)  check_update_services ;;
+  "")            main_menu ;;
+  *)             die "Usage: $0 [init|services|gpu|check-update]" ;;
 esac

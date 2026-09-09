@@ -32,7 +32,7 @@ endif
 .PHONY: help init env ensure-env ensure-docker ensure-override \
         up down start stop restart \
         pull update clean \
-        ps status logs shell \
+        ps status logs shell check-update \
         config validate \
         interactive configure-services configure-gpu-jellyfin
 
@@ -48,7 +48,7 @@ help:
 	@grep -E '^(up|down|start|stop|restart|pull|update|clean)[^:]*:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS=":.*?## "}; {printf "  $(GREEN)%-28s$(RESET) %s\n", $$1, $$2}'
 	@printf "\n$(CYAN)Observation$(RESET)\n"
-	@grep -E '^(ps|status|logs|shell)[^:]*:.*?## .*$$' $(MAKEFILE_LIST) \
+	@grep -E '^(ps|status|logs|shell|check-update)[^:]*:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS=":.*?## "}; {printf "  $(GREEN)%-28s$(RESET) %s\n", $$1, $$2}'
 	@printf "\n$(CYAN)Validation$(RESET)\n"
 	@grep -E '^(config|validate)[^:]*:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -144,6 +144,9 @@ shell: ensure-docker ## Shell dans un conteneur (SERVICE=<nom> requis)
 		echo "Usage: make shell SERVICE=<nom_du_service>"; exit 1; \
 	fi
 	$(COMPOSE) exec "$(SERVICE)" sh -c 'command -v bash >/dev/null 2>&1 && exec bash || exec sh'
+
+check-update: ensure-docker ensure-env ensure-override ## Vérifie les MàJ d'images dispo pour les services actifs
+	./scripts/stack-interactive.sh check-update
 
 # -----------------------------------------------------------------------------
 # Validation
