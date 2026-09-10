@@ -204,7 +204,11 @@ services:
       - ${CONFIG_DIR}/jellyfin:/config
       - ${DATA_DIR}/media:/data/media
     tmpfs:
-      - /transcode:size=8G
+      # Jellyfin 12.0 a supprimé le champ "Transcoding temporary path" (route API retirée) :
+      # le chemin de transcodage est désormais figé sur /config/cache/transcodes.
+      # Jellyfin 12.0 removed the "Transcoding temporary path" field (API route dropped):
+      # the transcode path is now hardcoded to /config/cache/transcodes.
+      - /config/cache/transcodes:size=8G,uid=${PUID},gid=${PGID},mode=1700
     restart: unless-stopped
 
   # ===========================================================================
